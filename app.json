@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Amici",
+    "slug": "amici",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.amici.app",
+      "infoPlist": {
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
+        "NSLocationWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
+        "NSLocationAlwaysUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
+        "UIBackgroundModes": ["location", "fetch", "remote-notification"]
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Amici needs your location during active windows to find people nearby who share your interests."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
+    ]
+  }
+}
