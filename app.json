@@ -4,7 +4,7 @@
     "slug": "amici",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon.jpg",
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash.png",
@@ -16,12 +16,16 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.amici.app",
+      "bundleIdentifier": "com.arjunpuri.amici",
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
         "NSLocationWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
         "NSLocationAlwaysUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
-        "UIBackgroundModes": ["location", "fetch", "remote-notification"]
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "plugins": [
@@ -38,6 +42,11 @@
           "color": "#ffffff"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f62460c6-1879-406f-8d04-140703e6b8a2"
+      }
+    }
   }
 }
