@@ -36,7 +36,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 const GRAD_YEARS = [CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2, CURRENT_YEAR + 3, CURRENT_YEAR + 4];
 
 export default function ProfileScreen({ navigation }: Props) {
-  const { refreshOnboarded, signOut } = useAuth();
+  const { signOut } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -224,39 +224,6 @@ export default function ProfileScreen({ navigation }: Props) {
     ]);
   }
 
-  async function handleDevReset() {
-    Alert.alert(
-      'Reset onboarding',
-      'Clears all profile data and restarts onboarding. Dev only.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            await Promise.all([
-              supabase.from('users').update({
-                profile_photo_url: null,
-                graduation_year: null,
-                hometown_city: null,
-                hometown_state: null,
-                instagram_handle: null,
-                phone_number: null,
-              }).eq('id', user.id),
-              supabase.from('user_interests').delete().eq('user_id', user.id),
-              supabase.from('active_windows').delete().eq('user_id', user.id),
-            ]);
-
-            await signOut();
-          },
-        },
-      ]
-    );
-  }
-
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -406,12 +373,6 @@ export default function ProfileScreen({ navigation }: Props) {
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
 
-        {__DEV__ && (
-          <TouchableOpacity style={styles.devResetRow} onPress={handleDevReset}>
-            <Text style={styles.devResetText}>Reset onboarding (dev)</Text>
-          </TouchableOpacity>
-        )}
-
       </ScrollView>
     </View>
   );
@@ -488,7 +449,4 @@ const styles = StyleSheet.create({
 
   signOutRow: { alignItems: 'center', paddingVertical: spacing.lg },
   signOutText: { color: colors.secondary, fontSize: 14 },
-
-  devResetRow: { alignItems: 'center', paddingBottom: spacing.xl },
-  devResetText: { color: colors.error, fontSize: 12 },
 });

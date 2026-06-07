@@ -7,9 +7,7 @@ import {
   ScrollView,
   Image,
   Switch,
-  Alert,
 } from 'react-native';
-import * as Location from 'expo-location';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -29,7 +27,6 @@ type Summary = {
 
 export default function HomeScreen({ navigation }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [pingStatus, setPingStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const { status: trackingStatus, toggle: toggleTracking } = useLocationTracking();
   usePushToken();
 
@@ -61,84 +58,6 @@ export default function HomeScreen({ navigation }: Props) {
     const unsub = navigation.addListener('focus', load);
     return unsub;
   }, [load, navigation]);
-
-  async function sendTestPing() {
-    setPingStatus('sending');
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        Alert.alert('Test Ping', 'Not signed in.');
-        setPingStatus('error');
-        setTimeout(() => setPingStatus('idle'), 2000);
-        return;
-      }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const { error } = await supabase.from('location_pings').insert({
-        user_id: session.user.id,
-        lat: loc.coords.latitude,
-        lng: loc.coords.longitude,
-      });
-      if (error) throw error;
-      setPingStatus('ok');
-    } catch (err: any) {
-      Alert.alert('Test Ping Failed', err?.message ?? 'Unknown error');
-      setPingStatus('error');
-    } finally {
-      setTimeout(() => setPingStatus('idle'), 2000);
-    }
-  }
-
-  // Opens the most recent match / connection for the current user in the given state.
-  // Requires running scripts/create-dev-match.mjs first.
-  async function openDevMatch(state: 'pending' | 'talked-me' | 'talked-them' | 'connected') {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    if (state === 'connected') {
-      // Navigate to the ShareScreen directly
-      const { data: conn } = await supabase
-        .from('connections')
-        .select('id, match_id')
-        .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`)
-        .order('connected_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (conn) {
-        navigation.navigate('ShareModal', { matchId: conn.match_id, connectionId: conn.id });
-      } else {
-        Alert.alert('No connection found', 'Run scripts/create-dev-match.mjs first.');
-      }
-      return;
-    }
-
-    let query = supabase
-      .from('matches')
-      .select('id')
-      .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`)
-      .order('fired_at', { ascending: false })
-      .limit(1);
-
-    if (state === 'pending') {
-      query = query.eq('status', 'pending');
-    } else if (state === 'talked-me') {
-      query = query.eq('status', 'talked').eq('talked_by_user_id', user.id);
-    } else {
-      query = query.eq('status', 'talked')
-        .neq('talked_by_user_id', user.id)
-        .not('talked_by_user_id', 'is', null);
-    }
-
-    const { data } = await query.maybeSingle();
-    if (data) {
-      navigation.navigate('MatchModal', { matchId: data.id });
-    } else {
-      Alert.alert(
-        'No match found',
-        'Run scripts/create-dev-match.mjs first.\n\nAdd REAL_USER_EMAIL to your .env first.',
-      );
-    }
-  }
 
   const isActive = trackingStatus === 'active';
   const isChecking = trackingStatus === 'checking';
@@ -208,14 +127,6 @@ export default function HomeScreen({ navigation }: Props) {
         >
           <Text style={styles.historyLinkText}>Match history</Text>
         </TouchableOpacity>
-
-        {__DEV__ && (
-          <DevPanel
-            pingStatus={pingStatus}
-            onPing={sendTestPing}
-            onOpenMatch={openDevMatch}
-          />
-        )}
       </ScrollView>
     </View>
   );
@@ -283,99 +194,4 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-});
-
-// ─── Dev panel (DEV only) ─────────────────────────────────────────────────────
-
-type DevPanelProps = {
-  pingStatus: 'idle' | 'sending' | 'ok' | 'error';
-  onPing: () => void;
-  onOpenMatch: (state: 'pending' | 'talked-me' | 'talked-them' | 'connected') => void;
-};
-
-function DevPanel({ pingStatus, onPing, onOpenMatch }: DevPanelProps) {
-  return (
-    <View style={dev.panel}>
-      <Text style={dev.label}>DEV</Text>
-
-      {/* Ping row */}
-      <TouchableOpacity
-        style={[dev.btn, pingStatus === 'ok' && dev.btnOk, pingStatus === 'error' && dev.btnErr]}
-        onPress={onPing}
-        disabled={pingStatus === 'sending'}
-        activeOpacity={0.7}
-      >
-        <Text style={dev.btnText}>
-          {pingStatus === 'sending' ? 'Sending…'
-            : pingStatus === 'ok'   ? 'Ping sent ✓'
-            : pingStatus === 'error'? 'Failed ✗'
-            : 'Send Test Ping'}
-        </Text>
-      </TouchableOpacity>
-
-      {/* Match screen states */}
-      <Text style={dev.sectionLabel}>Match Screen</Text>
-      <View style={dev.row}>
-        {(
-          [
-            { key: 'pending',     label: 'Pending' },
-            { key: 'talked-me',   label: 'Talked / Me' },
-            { key: 'talked-them', label: 'Talked / Them' },
-          ] as const
-        ).map(({ key, label }) => (
-          <TouchableOpacity
-            key={key}
-            style={dev.stateBtn}
-            onPress={() => onOpenMatch(key)}
-            activeOpacity={0.7}
-          >
-            <Text style={dev.stateBtnText}>{label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Share screen */}
-      <Text style={dev.sectionLabel}>Share Screen</Text>
-      <TouchableOpacity
-        style={dev.stateBtn}
-        onPress={() => onOpenMatch('connected')}
-        activeOpacity={0.7}
-      >
-        <Text style={dev.stateBtnText}>Connected</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const dev = StyleSheet.create({
-  panel: {
-    marginTop: spacing.xl,
-    borderWidth: 1, borderColor: colors.border,
-    borderRadius: 10, padding: spacing.md,
-    backgroundColor: colors.surface,
-    gap: spacing.sm,
-  },
-  label: {
-    fontSize: 10, color: colors.secondary,
-    letterSpacing: 1.5, fontWeight: '600',
-  },
-  sectionLabel: {
-    fontSize: 11, color: colors.secondary, marginTop: spacing.xs,
-  },
-  btn: {
-    paddingVertical: 8, borderRadius: 7,
-    borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center',
-  },
-  btnOk:  { borderColor: colors.success },
-  btnErr: { borderColor: colors.error },
-  btnText: { fontSize: 13, color: colors.secondary },
-
-  row: { flexDirection: 'row', gap: spacing.xs },
-  stateBtn: {
-    flex: 1, paddingVertical: 7, borderRadius: 7,
-    borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center',
-  },
-  stateBtnText: { fontSize: 12, color: colors.secondary },
 });

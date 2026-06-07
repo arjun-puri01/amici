@@ -2,7 +2,7 @@
   "expo": {
     "name": "Amici",
     "slug": "amici",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.jpg",
     "userInterfaceStyle": "dark",
@@ -44,6 +44,8 @@
       ]
     ],
     "extra": {
+      "supabaseUrl": "https://eouejrzpllaitokbrhba.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvdWVqcnpwbGxhaXRva2JyaGJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMjQ2NzgsImV4cCI6MjA5NDkwMDY3OH0.rYTXGwxmAslOZ9ku_ipiphEIEMikCpYyyDbjvn6Zldg",
       "eas": {
         "projectId": "f62460c6-1879-406f-8d04-140703e6b8a2"
       }
