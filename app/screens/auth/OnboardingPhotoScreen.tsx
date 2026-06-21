@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -52,14 +54,20 @@ export default function OnboardingPhotoScreen({ navigation }: Props) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
+      // Read the file as base64 then decode to an ArrayBuffer. fetch().blob(),
+      // .arrayBuffer() and File().bytes() all return empty data for file://
+      // URIs in React Native, which uploads a 0-byte object that renders black.
+      const base64 = await readAsStringAsync(imageUri, { encoding: EncodingType.Base64 });
+      const arrayBuffer = decode(base64);
+      if (arrayBuffer.byteLength === 0) throw new Error('Selected image is empty.');
+
       const ext = imageUri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'jpg';
+      const contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
       const path = `${user.id}/profile.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from('profile-photos')
-        .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+        .upload(path, arrayBuffer, { upsert: true, contentType });
 
       if (uploadError) throw uploadError;
 

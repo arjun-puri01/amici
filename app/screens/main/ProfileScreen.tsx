@@ -9,8 +9,12 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -104,14 +108,21 @@ export default function ProfileScreen({ navigation }: Props) {
       if (!user) throw new Error('Not authenticated');
 
       const uri = result.assets[0].uri;
-      const response = await fetch(uri);
-      const arrayBuffer = await response.arrayBuffer();
-      const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
+
+      // Read the file as base64 then decode to an ArrayBuffer. fetch().blob(),
+      // .arrayBuffer() and File().bytes() all return empty data for file://
+      // URIs in React Native, which uploads a 0-byte object that renders black.
+      const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+      const arrayBuffer = decode(base64);
+      if (arrayBuffer.byteLength === 0) throw new Error('Selected image is empty.');
+
+      const ext = uri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'jpg';
+      const contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
       const path = `${user.id}/profile.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from('profile-photos')
-        .upload(path, arrayBuffer, { upsert: true, contentType: `image/${ext}` });
+        .upload(path, arrayBuffer, { upsert: true, contentType });
 
       if (uploadError) throw uploadError;
 
@@ -235,8 +246,11 @@ export default function ProfileScreen({ navigation }: Props) {
   if (!profile) return null;
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.inner} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView contentContainerStyle={styles.inner} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* Photo */}
         <TouchableOpacity style={styles.photoRow} onPress={pickAndUploadPhoto} activeOpacity={0.8}>
@@ -374,7 +388,7 @@ export default function ProfileScreen({ navigation }: Props) {
         </TouchableOpacity>
 
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
