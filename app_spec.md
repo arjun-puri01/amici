@@ -18,7 +18,7 @@ During active windows, the app runs background location at low frequency (every 
 Every location ping, the app queries the backend: are any other active users within X meters (configurable, default 50 meters) who share at least one trigger with me?
 A trigger is: same hometown OR same niche interest
 The match must persist for at least 3 minutes before a notification fires (both users must have been nearby for 3+ minutes — this filters out people just walking past)
-Dorms are excluded from matching (too many people in a small space creates false positives). Implement this as a geofenced exclusion zone — user sets their dorm location on a map during onboarding and a 100 meter radius around it is excluded
+Dorms are excluded from matching (too many people in a small space creates false positives). IMPLEMENTED AS: a system-wide hardcoded set of Brown University dorm building locations (36 buildings, 50 meter exclusion radius each) stored in the brown_dorm_zones table — no per-user map setup during onboarding. The per-user dorm_exclusion_zones table still exists and is also checked as a supplementary personal zone, but there is no onboarding UI to populate it; for the Brown MVP the hardcoded campus zones cover all dorms. (Original spec called for a user-set map location with a 100 meter radius; this was changed during implementation to remove onboarding friction and guarantee coverage.)
 Matches only fire once per pair per 24 hours. If a match has been “acted upon” (see below, We Talked) then the match should never fire again.
 The Notification
 When a match fires, both users get a push notification simultaneously. The notification shows:
