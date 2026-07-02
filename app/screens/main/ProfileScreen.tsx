@@ -20,6 +20,7 @@ import { RootStackParamList } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/AuthContext';
 import { INTEREST_CATEGORIES } from '../../lib/interests';
+import InterestPicker from '../../components/InterestPicker';
 import { colors, spacing } from '../../lib/theme';
 
 type Props = {
@@ -77,14 +78,6 @@ export default function ProfileScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  function toggleInterest(label: string) {
-    setSelectedInterests((prev) => {
-      const next = new Set(prev);
-      next.has(label) ? next.delete(label) : next.add(label);
-      return next;
-    });
-  }
 
   async function pickAndUploadPhoto() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -321,25 +314,7 @@ export default function ProfileScreen({ navigation }: Props) {
 
         {/* Interests */}
         <Section label="Interests">
-          {INTEREST_CATEGORIES.map((category) => (
-            <View key={category.label} style={styles.categoryBlock}>
-              <Text style={styles.categoryLabel}>{category.label}</Text>
-              <View style={styles.chipRow}>
-                {category.items.map((item) => (
-                  <TouchableOpacity
-                    key={item}
-                    style={[styles.chip, selectedInterests.has(item) && styles.chipSelected]}
-                    onPress={() => toggleInterest(item)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.chipText, selectedInterests.has(item) && styles.chipTextSelected]}>
-                      {item}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          ))}
+          <InterestPicker selected={selectedInterests} onChange={setSelectedInterests} />
         </Section>
 
         <Divider />
@@ -447,9 +422,6 @@ const styles = StyleSheet.create({
   chipSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
   chipText: { fontSize: 14, color: colors.secondary },
   chipTextSelected: { color: colors.background },
-
-  categoryBlock: { gap: spacing.xs, marginBottom: spacing.sm },
-  categoryLabel: { fontSize: 11, color: colors.secondary, textTransform: 'uppercase', letterSpacing: 1 },
 
   contactNote: { fontSize: 13, color: colors.secondary, lineHeight: 18, marginBottom: spacing.xs },
 

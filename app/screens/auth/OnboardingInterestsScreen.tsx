@@ -12,6 +12,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { INTEREST_CATEGORIES } from '../../lib/interests';
+import InterestPicker from '../../components/InterestPicker';
 import { colors, spacing } from '../../lib/theme';
 
 type Props = {
@@ -21,18 +22,6 @@ type Props = {
 export default function OnboardingInterestsScreen({ navigation }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
-
-  function toggle(label: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) {
-        next.delete(label);
-      } else {
-        next.add(label);
-      }
-      return next;
-    });
-  }
 
   async function handleNext() {
     if (selected.size === 0) {
@@ -113,25 +102,7 @@ export default function OnboardingInterestsScreen({ navigation }: Props) {
           Pick anything that genuinely applies. The more specific, the better the match.
         </Text>
 
-        {INTEREST_CATEGORIES.map((category) => (
-          <View key={category.label} style={styles.categoryBlock}>
-            <Text style={styles.categoryLabel}>{category.label}</Text>
-            <View style={styles.chips}>
-              {category.items.map((item) => (
-                <TouchableOpacity
-                  key={item}
-                  style={[styles.chip, selected.has(item) && styles.chipSelected]}
-                  onPress={() => toggle(item)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.chipText, selected.has(item) && styles.chipTextSelected]}>
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ))}
+        <InterestPicker selected={selected} onChange={setSelected} />
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
@@ -163,23 +134,6 @@ const styles = StyleSheet.create({
   step: { fontSize: 13, color: colors.secondary },
   title: { fontSize: 28, color: colors.primary, fontWeight: '600', marginBottom: spacing.xs },
   subtitle: { fontSize: 15, color: colors.secondary, lineHeight: 22, marginBottom: spacing.lg },
-  categoryBlock: { gap: spacing.sm, marginBottom: spacing.sm },
-  categoryLabel: { fontSize: 12, color: colors.secondary, textTransform: 'uppercase', letterSpacing: 1 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: colors.surface,
-  },
-  chipSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-  },
-  chipText: { fontSize: 14, color: colors.secondary },
-  chipTextSelected: { color: colors.background },
   button: {
     backgroundColor: colors.primary,
     borderRadius: 10,

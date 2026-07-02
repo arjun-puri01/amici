@@ -18,6 +18,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.arjunpuri.amici",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
         "NSLocationWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
         "NSLocationAlwaysUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
