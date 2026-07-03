@@ -50,36 +50,48 @@ export function useLocationTracking() {
       }
     }
 
-    // ── Background permission ──────────────────────────────────────────────
-    const bgCurrent = await Location.getBackgroundPermissionsAsync();
+    // ── Background ("Always") permission ───────────────────────────────────
+    // Background location on iOS requires "Always". "While Using" is not enough:
+    // the task must keep pinging after the app is backgrounded.
+    let bg = await Location.getBackgroundPermissionsAsync();
 
-    if (!bgCurrent.canAskAgain && bgCurrent.status !== 'granted') {
-      showSettingsAlert();
+    if (bg.status !== 'granted' && bg.canAskAgain) {
+      bg = await Location.requestBackgroundPermissionsAsync();
+    }
+
+    if (bg.status !== 'granted') {
+      // User granted only "While Using" (or denied). Explain why Always is
+      // required and point them to Settings — don't start, since the task
+      // cannot run in the background without it.
+      explainAlwaysNeeded();
       setStatus('no_permission');
       return;
     }
 
-    if (bgCurrent.status !== 'granted') {
-      const bg = await Location.requestBackgroundPermissionsAsync();
-      if (bg.status !== 'granted') {
-        if (!bg.canAskAgain) showSettingsAlert();
-        setStatus('no_permission');
-        return;
-      }
-    }
-
     // ── Start task ─────────────────────────────────────────────────────────
-    const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (!alreadyRunning) {
-      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: 60_000,
-        distanceInterval: 0,
-        showsBackgroundLocationIndicator: true,
-      });
+    try {
+      const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      if (!alreadyRunning) {
+        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 60_000,
+          distanceInterval: 0,
+          // Keep updates flowing while backgrounded — iOS otherwise pauses
+          // location when it thinks the device is stationary, which silently
+          // stops pings. The in-task active-window check still gates pinging.
+          pausesUpdatesAutomatically: false,
+          activityType: Location.ActivityType.Other,
+          showsBackgroundLocationIndicator: true,
+        });
+      }
+      setStatus('active');
+    } catch (err: any) {
+      Alert.alert(
+        "Couldn't start location",
+        err?.message ?? 'Something went wrong starting background location. Please try again.'
+      );
+      setStatus('inactive');
     }
-
-    setStatus('active');
   }
 
   async function stop() {
@@ -104,7 +116,21 @@ export function useLocationTracking() {
 function showSettingsAlert() {
   Alert.alert(
     'Location access needed',
-    'Amici needs location set to "Always" to find nearby connections.\n\nSettings → Expo Go → Location → Always',
+    'Amici needs location set to "Always" to find nearby connections while running in the background.\n\nSettings → Amici → Location → Always',
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Open Settings', onPress: () => Linking.openSettings() },
+    ]
+  );
+}
+
+// Shown when the user grants only "While Using" (or denies background). Amici
+// works by checking your location in the background during your active windows,
+// which iOS only allows with "Always".
+function explainAlwaysNeeded() {
+  Alert.alert(
+    'Set location to "Always"',
+    'Amici only works while it runs quietly in the background during your active windows — so iOS requires location set to "Always". With "While Using" it can\'t notify you once the app is closed.\n\nSettings → Amici → Location → Always',
     [
       { text: 'Not now', style: 'cancel' },
       { text: 'Open Settings', onPress: () => Linking.openSettings() },

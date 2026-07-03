@@ -2,7 +2,7 @@
   "expo": {
     "name": "Amici",
     "slug": "amici",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.jpg",
     "userInterfaceStyle": "dark",
@@ -19,9 +19,9 @@
       "bundleIdentifier": "com.arjunpuri.amici",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
-        "NSLocationWhenInUseUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
-        "NSLocationAlwaysUsageDescription": "Amici needs your location during active windows to find people nearby who share your interests.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Amici checks your location in the background about once a minute, but only during the active windows you set, to notify you when someone nearby shares an interest or hometown. It never tracks you outside those windows.",
+        "NSLocationWhenInUseUsageDescription": "Amici uses your location to find people nearby who share an interest or hometown with you.",
+        "NSLocationAlwaysUsageDescription": "Amici checks your location in the background about once a minute, but only during the active windows you set, to notify you when someone nearby shares an interest or hometown. It never tracks you outside those windows.",
         "UIBackgroundModes": [
           "location",
           "fetch",
@@ -33,7 +33,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Amici needs your location during active windows to find people nearby who share your interests."
+          "locationAlwaysAndWhenInUsePermission": "Amici checks your location in the background about once a minute, but only during the active windows you set, to notify you when someone nearby shares an interest or hometown. It never tracks you outside those windows.",
+          "isIosBackgroundLocationEnabled": true
         }
       ],
       [

@@ -90,7 +90,7 @@ export default function HomeScreen({ navigation }: Props) {
                 {isActive
                   ? 'Looking for nearby connections'
                   : noPermission
-                  ? 'Settings → Expo Go → Location → Always'
+                  ? 'Settings → Amici → Location → Always'
                   : 'Turn on to find nearby connections'}
               </Text>
             </View>
