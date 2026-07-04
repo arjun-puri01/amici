@@ -7,12 +7,21 @@ import {
   ScrollView,
   Image,
   Switch,
+  Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { useLocationTracking } from '../../hooks/useLocationTracking';
 import { usePushToken } from '../../hooks/usePushToken';
+import {
+  evaluateActiveWindow,
+  effectiveTracking,
+  formatTime12h,
+  WindowRow,
+  TrackingOverride,
+} from '../../lib/activeWindow';
+import { loadOverride, saveOverride, clearOverride } from '../../lib/trackingOverride';
 import { colors, spacing } from '../../lib/theme';
 
 type Props = {
@@ -27,14 +36,18 @@ type Summary = {
 
 export default function HomeScreen({ navigation }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null);
-  const { status: trackingStatus, toggle: toggleTracking } = useLocationTracking();
+  const [windows, setWindows] = useState<WindowRow[]>([]);
+  const [override, setOverride] = useState<TrackingOverride | null>(null);
+  const [now, setNow] = useState(new Date());
+  const { engineStatus, enableTracking } = useLocationTracking();
   usePushToken();
 
   const load = useCallback(async () => {
+    setNow(new Date()); // refresh the indicator immediately on focus
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [profileRes, connRes] = await Promise.all([
+    const [profileRes, connRes, windowsRes] = await Promise.all([
       supabase
         .from('users')
         .select('first_name, profile_photo_url')
@@ -44,6 +57,10 @@ export default function HomeScreen({ navigation }: Props) {
         .from('connections')
         .select('id', { count: 'exact', head: true })
         .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`),
+      supabase
+        .from('active_windows')
+        .select('day_of_week, start_time, end_time')
+        .eq('user_id', user.id),
     ]);
 
     setSummary({
@@ -51,6 +68,15 @@ export default function HomeScreen({ navigation }: Props) {
       profile_photo_url: profileRes.data?.profile_photo_url ?? null,
       connection_count: connRes.count ?? 0,
     });
+
+    if (windowsRes.error) {
+      console.warn('[home] failed to load active windows:', windowsRes.error.message);
+    } else {
+      setWindows((windowsRes.data as WindowRow[]) ?? []);
+    }
+
+    // Read any persisted override (self-heals if expired or for another user).
+    setOverride(await loadOverride(user.id, new Date()));
   }, []);
 
   useEffect(() => {
@@ -59,9 +85,93 @@ export default function HomeScreen({ navigation }: Props) {
     return unsub;
   }, [load, navigation]);
 
-  const isActive = trackingStatus === 'active';
-  const isChecking = trackingStatus === 'checking';
-  const noPermission = trackingStatus === 'no_permission';
+  // Tick so the indicator flips when a schedule or override boundary passes
+  // while the screen is open.
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Clear an expired override from state + storage the moment it lapses, so no
+  // stale override lingers past its boundary.
+  useEffect(() => {
+    if (override && Date.now() >= override.expiresAt) {
+      clearOverride().catch(() => {});
+      setOverride(null);
+    }
+  }, [now, override]);
+
+  const isChecking = engineStatus === 'checking';
+  const noPermission = engineStatus === 'no_permission';
+  const hasWindows = windows.length > 0;
+
+  const schedule = evaluateActiveWindow(windows, now);
+  const eff = effectiveTracking(schedule, override, now); // { on, overriding }
+  // What the Switch shows: only meaningful when the engine can actually run.
+  const trackingOn = !isChecking && !noPermission && hasWindows && eff.on;
+
+  // Toggle = temporary override of the current effective state. Toggling back to
+  // the natural (scheduled) state clears the override; otherwise it forces the
+  // opposite state until the schedule's next boundary.
+  async function onToggleOverride() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const next = !eff.on;
+      if (next === schedule.isOpen || !schedule.nextBoundaryAt) {
+        await clearOverride();
+        setOverride(null);
+      } else {
+        const o: TrackingOverride = {
+          userId: user.id,
+          value: next,
+          expiresAt: schedule.nextBoundaryAt.getTime(),
+        };
+        await saveOverride(o);
+        setOverride(o);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? "Couldn't update tracking.");
+    }
+  }
+
+  // Label + dot reflect the effective state, and when an override is fighting the
+  // schedule the sub-line says what tracking would NORMALLY be doing.
+  let statusLabel: string;
+  let statusSub: string;
+  let dotStyle = styles.dotInactive;
+
+  if (isChecking) {
+    statusLabel = 'Checking…';
+    statusSub = '';
+  } else if (noPermission) {
+    statusLabel = 'Location off';
+    statusSub = 'Tap to enable — needs Always';
+  } else if (!hasWindows) {
+    statusLabel = 'No active windows';
+    statusSub = 'Set active windows first';
+  } else if (eff.on && !eff.overriding) {
+    statusLabel = 'Listening';
+    statusSub = schedule.untilTime ? `Active until ${formatTime12h(schedule.untilTime)}` : 'Active';
+    dotStyle = styles.dotActive;
+  } else if (!eff.on && !eff.overriding) {
+    statusLabel = 'Off';
+    statusSub = schedule.nextOpenTime ? `Opens ${formatTime12h(schedule.nextOpenTime)}` : 'No upcoming window';
+  } else if (eff.on && eff.overriding) {
+    statusLabel = 'On';
+    statusSub = schedule.nextOpenTime
+      ? `Normally closed until ${formatTime12h(schedule.nextOpenTime)}`
+      : 'Forced on';
+    dotStyle = styles.dotPaused;
+  } else {
+    // !eff.on && eff.overriding — forced off inside a window
+    statusLabel = 'Off';
+    statusSub = schedule.untilTime
+      ? `Normally active until ${formatTime12h(schedule.untilTime)}`
+      : 'Forced off';
+    dotStyle = styles.dotPaused;
+  }
 
   return (
     <View style={styles.container}>
@@ -80,25 +190,22 @@ export default function HomeScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Status card */}
         <View style={styles.statusCard}>
-          <View style={styles.statusLeft}>
-            <View style={[styles.statusDot, isActive ? styles.dotActive : styles.dotInactive]} />
-            <View>
-              <Text style={styles.statusLabel}>
-                {isChecking ? 'Checking…' : isActive ? 'Listening' : noPermission ? 'Permission needed' : 'Paused'}
-              </Text>
-              <Text style={styles.statusSub}>
-                {isActive
-                  ? 'Looking for nearby connections'
-                  : noPermission
-                  ? 'Settings → Amici → Location → Always'
-                  : 'Turn on to find nearby connections'}
-              </Text>
+          <TouchableOpacity
+            style={styles.statusLeft}
+            activeOpacity={noPermission ? 0.7 : 1}
+            disabled={!noPermission}
+            onPress={noPermission ? enableTracking : undefined}
+          >
+            <View style={[styles.statusDot, dotStyle]} />
+            <View style={styles.statusText}>
+              <Text style={styles.statusLabel}>{statusLabel}</Text>
+              {statusSub ? <Text style={styles.statusSub}>{statusSub}</Text> : null}
             </View>
-          </View>
+          </TouchableOpacity>
           <Switch
-            value={isActive}
-            onValueChange={toggleTracking}
-            disabled={isChecking}
+            value={trackingOn}
+            onValueChange={onToggleOverride}
+            disabled={isChecking || noPermission || !hasWindows}
             trackColor={{ false: colors.border, true: colors.accent }}
             thumbColor={colors.primary}
           />
@@ -163,9 +270,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginBottom: spacing.xl,
   },
-  statusLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  statusLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  statusText: { flex: 1 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   dotActive: { backgroundColor: colors.success },
+  dotPaused: { backgroundColor: colors.accent },
   dotInactive: { backgroundColor: colors.secondary },
   statusLabel: { fontSize: 15, color: colors.primary, fontWeight: '500' },
   statusSub: { fontSize: 12, color: colors.secondary, marginTop: 2 },

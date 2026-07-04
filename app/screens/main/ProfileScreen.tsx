@@ -21,6 +21,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/AuthContext';
 import { INTEREST_CATEGORIES } from '../../lib/interests';
 import InterestPicker from '../../components/InterestPicker';
+import WindowEditor from '../../components/WindowEditor';
+import { DayWindow, defaultWeek, loadActiveWindows, saveActiveWindows } from '../../lib/activeWindowsStore';
 import { colors, spacing } from '../../lib/theme';
 
 type Props = {
@@ -44,6 +46,7 @@ export default function ProfileScreen({ navigation }: Props) {
   const { signOut } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<Set<string>>(new Set());
+  const [windows, setWindows] = useState<DayWindow[]>(defaultWeek());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -51,7 +54,7 @@ export default function ProfileScreen({ navigation }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [profileRes, interestRes] = await Promise.all([
+    const [profileRes, interestRes, windowsResult] = await Promise.all([
       supabase
         .from('users')
         .select('first_name, profile_photo_url, graduation_year, hometown_city, hometown_state, instagram_handle, phone_number')
@@ -61,6 +64,10 @@ export default function ProfileScreen({ navigation }: Props) {
         .from('user_interests')
         .select('interests(label)')
         .eq('user_id', user.id),
+      loadActiveWindows(user.id).catch((err) => {
+        console.warn('[profile] failed to load active windows:', err?.message);
+        return null;
+      }),
     ]);
 
     if (profileRes.data) {
@@ -73,6 +80,8 @@ export default function ProfileScreen({ navigation }: Props) {
         .filter(Boolean) as string[];
       setSelectedInterests(new Set(labels));
     }
+
+    if (windowsResult) setWindows(windowsResult);
 
     setLoading(false);
   }, []);
@@ -209,6 +218,9 @@ export default function ProfileScreen({ navigation }: Props) {
 
       if (linkErr) throw linkErr;
 
+      // Sync active windows (validates ≥1 day enabled + no zero-length windows).
+      await saveActiveWindows(user.id, windows);
+
       navigation.goBack();
     } catch (err: any) {
       Alert.alert('Error', err.message ?? 'Something went wrong.');
@@ -315,6 +327,16 @@ export default function ProfileScreen({ navigation }: Props) {
         {/* Interests */}
         <Section label="Interests">
           <InterestPicker selected={selectedInterests} onChange={setSelectedInterests} />
+        </Section>
+
+        <Divider />
+
+        {/* Active windows */}
+        <Section label="Active windows">
+          <Text style={styles.contactNote}>
+            Amici only runs during these windows. A window ending earlier than it starts (e.g. 10pm–2am) carries into the next day.
+          </Text>
+          <WindowEditor value={windows} onChange={setWindows} />
         </Section>
 
         <Divider />

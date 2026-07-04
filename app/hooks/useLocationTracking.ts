@@ -1,116 +1,87 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Alert, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { LOCATION_TASK_NAME } from '../lib/backgroundTask';
 
-export type TrackingStatus = 'checking' | 'active' | 'inactive' | 'no_permission';
+// The location "engine". In the schedule-driven model there is no manual opt-in:
+// the engine runs whenever permission is granted, and the background task gates
+// actual pinging by the effective state (schedule XOR override). This hook only
+// owns permission + engine lifecycle; the override toggle lives in the Home screen.
+export type EngineStatus = 'checking' | 'running' | 'no_permission';
 
 export function useLocationTracking() {
-  const [status, setStatus] = useState<TrackingStatus>('checking');
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>('checking');
 
-  useEffect(() => {
-    (async () => {
-      const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
-      if (running) {
-        setStatus('active');
-        return;
-      }
-      // Only reflect denied state when the OS won't let us ask again.
-      const fg = await Location.getForegroundPermissionsAsync();
-      if (!fg.canAskAgain && fg.status !== 'granted') {
-        setStatus('no_permission');
-        return;
-      }
-      const bg = await Location.getBackgroundPermissionsAsync();
-      if (!bg.canAskAgain && bg.status !== 'granted') {
-        setStatus('no_permission');
-        return;
-      }
-      setStatus('inactive');
-    })();
+  const startEngine = useCallback(async () => {
+    const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(
+      () => false
+    );
+    if (!alreadyRunning) {
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 60_000,
+        distanceInterval: 0,
+        // Keep updates flowing while backgrounded — iOS otherwise pauses
+        // location when it thinks the device is stationary, which silently
+        // stops pings. The in-task effective-state check still gates pinging.
+        pausesUpdatesAutomatically: false,
+        activityType: Location.ActivityType.Other,
+        showsBackgroundLocationIndicator: true,
+      });
+    }
+    setEngineStatus('running');
   }, []);
 
-  async function start() {
-    // ── Foreground permission ──────────────────────────────────────────────
-    const fgCurrent = await Location.getForegroundPermissionsAsync();
+  // On mount: start the engine only if permission is already granted (no prompt).
+  useEffect(() => {
+    (async () => {
+      const fg = await Location.getForegroundPermissionsAsync();
+      const bg = await Location.getBackgroundPermissionsAsync();
+      if (fg.status === 'granted' && bg.status === 'granted') {
+        try {
+          await startEngine();
+        } catch {
+          setEngineStatus('no_permission');
+        }
+      } else {
+        setEngineStatus('no_permission');
+      }
+    })();
+  }, [startEngine]);
 
-    if (!fgCurrent.canAskAgain && fgCurrent.status !== 'granted') {
-      // iOS will not show the dialog again — user must go to Settings.
-      showSettingsAlert();
-      setStatus('no_permission');
-      return;
-    }
-
-    if (fgCurrent.status !== 'granted') {
-      const fg = await Location.requestForegroundPermissionsAsync();
+  // Interactive: request "Always" permission then start the engine. Wired to the
+  // Home permission prompt. Background location on iOS requires "Always" — "While
+  // Using" is not enough because the task must keep pinging once backgrounded.
+  const enableTracking = useCallback(async () => {
+    let fg = await Location.getForegroundPermissionsAsync();
+    if (fg.status !== 'granted') {
+      if (!fg.canAskAgain) return showSettingsAlert();
+      fg = await Location.requestForegroundPermissionsAsync();
       if (fg.status !== 'granted') {
         if (!fg.canAskAgain) showSettingsAlert();
-        setStatus('no_permission');
         return;
       }
     }
 
-    // ── Background ("Always") permission ───────────────────────────────────
-    // Background location on iOS requires "Always". "While Using" is not enough:
-    // the task must keep pinging after the app is backgrounded.
     let bg = await Location.getBackgroundPermissionsAsync();
-
-    if (bg.status !== 'granted' && bg.canAskAgain) {
-      bg = await Location.requestBackgroundPermissionsAsync();
-    }
-
     if (bg.status !== 'granted') {
-      // User granted only "While Using" (or denied). Explain why Always is
-      // required and point them to Settings — don't start, since the task
-      // cannot run in the background without it.
-      explainAlwaysNeeded();
-      setStatus('no_permission');
-      return;
+      if (!bg.canAskAgain) return explainAlwaysNeeded();
+      bg = await Location.requestBackgroundPermissionsAsync();
+      if (bg.status !== 'granted') return explainAlwaysNeeded();
     }
 
-    // ── Start task ─────────────────────────────────────────────────────────
     try {
-      const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-      if (!alreadyRunning) {
-        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 60_000,
-          distanceInterval: 0,
-          // Keep updates flowing while backgrounded — iOS otherwise pauses
-          // location when it thinks the device is stationary, which silently
-          // stops pings. The in-task active-window check still gates pinging.
-          pausesUpdatesAutomatically: false,
-          activityType: Location.ActivityType.Other,
-          showsBackgroundLocationIndicator: true,
-        });
-      }
-      setStatus('active');
+      await startEngine();
     } catch (err: any) {
       Alert.alert(
         "Couldn't start location",
         err?.message ?? 'Something went wrong starting background location. Please try again.'
       );
-      setStatus('inactive');
+      setEngineStatus('no_permission');
     }
-  }
+  }, [startEngine]);
 
-  async function stop() {
-    const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (running) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-    }
-    setStatus('inactive');
-  }
-
-  async function toggle() {
-    if (status === 'active') {
-      await stop();
-    } else {
-      await start();
-    }
-  }
-
-  return { status, start, stop, toggle };
+  return { engineStatus, enableTracking };
 }
 
 function showSettingsAlert() {

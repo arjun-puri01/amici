@@ -15,7 +15,7 @@ A passive, opt-in iOS app for college students (hardcoded to Brown University fo
 |---|------|--------|-------|
 | 1 | Auth + onboarding | Done | `.edu` validation, full onboarding stack |
 | 2 | Profile setup | Done | Photo, hometown, interests, grad year |
-| 3 | Active window setup | Done | Built in onboarding; editable in Profile |
+| 3 | Active window setup | Done | Onboarding + Profile share `WindowEditor`; 24h range incl. midnight-crossing windows |
 | 4 | Background location ping | Done | `useLocationTracking.ts`, `backgroundTask.ts` — needs real-device verification |
 | 5 | Matching edge function | Done | `supabase/functions/match-users` + `functions.sql` |
 | 6 | Push notification delivery | Done | Expo push / APNs — needs real-device verification |

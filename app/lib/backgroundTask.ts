@@ -1,6 +1,8 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import { supabase } from './supabase';
+import { evaluateActiveWindow, effectiveTracking } from './activeWindow';
+import { loadOverride } from './trackingOverride';
 
 export const LOCATION_TASK_NAME = 'amici-location';
 
@@ -23,7 +25,7 @@ TaskManager.defineTask(
 
       const userId = session.user.id;
 
-      if (!await isInActiveWindow(userId)) return;
+      if (!await shouldPingNow(userId)) return;
 
       const { error: insertError } = await supabase.from('location_pings').insert({
         user_id: userId,
@@ -48,23 +50,19 @@ TaskManager.defineTask(
   }
 );
 
-// Returns true if the current local time falls within one of the user's active windows.
-async function isInActiveWindow(userId: string): Promise<boolean> {
+// Whether tracking should ping right now = the EFFECTIVE state (schedule XOR a
+// still-valid manual override), not just the schedule. Uses the exact same
+// evaluateActiveWindow + effectiveTracking the Home indicator uses, and reads
+// the same persisted override, so pinging and the on-screen state always agree.
+async function shouldPingNow(userId: string): Promise<boolean> {
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = Sunday
-  const currentTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
 
   const { data } = await supabase
     .from('active_windows')
-    .select('start_time, end_time')
-    .eq('user_id', userId)
-    .eq('day_of_week', dayOfWeek);
+    .select('day_of_week, start_time, end_time')
+    .eq('user_id', userId);
 
-  if (!data?.length) return false;
-
-  return data.some((w) => currentTime >= w.start_time && currentTime < w.end_time);
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
+  const schedule = evaluateActiveWindow(data ?? [], now);
+  const override = await loadOverride(userId, now); // validates owner + expiry
+  return effectiveTracking(schedule, override, now).on;
 }
