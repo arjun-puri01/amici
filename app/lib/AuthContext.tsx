@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { cacheUserId, clearCachedUserId } from './sessionCache';
 
 type AuthState =
   | { status: 'loading' }
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set state immediately — don't wait for onAuthStateChange, which can be delayed
     // or lost in some async timing scenarios with Supabase's AsyncStorage adapter.
     setAuth({ status: 'signed_out' });
+    await clearCachedUserId();
     await supabase.auth.signOut();
   }
 
@@ -73,9 +75,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!session) {
+          await clearCachedUserId();
           setAuth({ status: 'signed_out' });
           return;
         }
+        // Cache the id for the background task so it never needs getSession().
+        await cacheUserId(session.user.id);
         const onboarded = await checkOnboarded(session.user.id);
         setAuth({ status: 'signed_in', session, onboarded });
       }
