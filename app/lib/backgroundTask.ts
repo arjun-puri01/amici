@@ -3,9 +3,14 @@ import * as Location from 'expo-location';
 import { supabase } from './supabase';
 import { evaluateActiveWindow, effectiveTracking } from './activeWindow';
 import { loadOverride } from './trackingOverride';
-import { getCachedUserId } from './sessionCache';
+import { getCachedSession } from './sessionCache';
 
 export const LOCATION_TASK_NAME = 'amici-location';
+
+// If the access token expires within this window, treat it as stale and skip all
+// auth-requiring calls this cycle. Comfortably larger than GoTrue's own refresh
+// margin, so a background getSession() never decides to refresh under the lock.
+const TOKEN_SKEW_MS = 120_000;
 
 // Cap background network calls so a hung request (common when iOS suspends the
 // app mid-flight) can't stall a task invocation indefinitely. Rejects on
@@ -32,10 +37,22 @@ TaskManager.defineTask(
     if (!location) return;
 
     try {
-      // Read the user id from AsyncStorage instead of supabase.auth.getSession()
+      // Read the session from AsyncStorage instead of supabase.auth.getSession()
       // so this hot path (runs every fix) never touches GoTrue's auth lock.
-      const userId = await getCachedUserId();
-      if (!userId) return;
+      const session = await getCachedSession();
+      if (!session) return;
+      const userId = session.userId;
+
+      // If the access token is expired/stale, DO NOT make any auth-requiring
+      // call: every PostgREST/Functions call runs _getAccessToken() ->
+      // getSession(), which would trigger a token refresh under the GoTrue lock.
+      // If iOS freezes the runtime mid-refresh the lock latches and the app
+      // hangs on next launch. Defer to foreground, where AppState-gated
+      // auto-refresh renews the token safely, then pings resume.
+      if (!session.expiresAtMs || session.expiresAtMs - Date.now() < TOKEN_SKEW_MS) {
+        console.warn('[location] access token stale — deferring pings until foreground refresh');
+        return;
+      }
 
       if (!await shouldPingNow(userId)) return;
 

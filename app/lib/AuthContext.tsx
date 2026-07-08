@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { cacheUserId, clearCachedUserId } from './sessionCache';
+import { cacheSession, clearCachedSession } from './sessionCache';
 
 type AuthState =
   | { status: 'loading' }
@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set state immediately — don't wait for onAuthStateChange, which can be delayed
     // or lost in some async timing scenarios with Supabase's AsyncStorage adapter.
     setAuth({ status: 'signed_out' });
-    await clearCachedUserId();
+    await clearCachedSession();
     await supabase.auth.signOut();
   }
 
@@ -75,12 +75,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!session) {
-          await clearCachedUserId();
+          await clearCachedSession();
           setAuth({ status: 'signed_out' });
           return;
         }
-        // Cache the id for the background task so it never needs getSession().
-        await cacheUserId(session.user.id);
+        // Cache id + token expiry for the background task on EVERY event
+        // (incl. TOKEN_REFRESHED) — this is what keeps the bg task's stale-check
+        // pointing at the new, later expiry after a foreground refresh.
+        await cacheSession(session.user.id, session.expires_at);
+
+        // A plain token refresh doesn't change onboarding status — just swap in
+        // the renewed session and skip the re-query / re-render churn.
+        if (event === 'TOKEN_REFRESHED') {
+          setAuth((prev) => (prev.status === 'signed_in' ? { ...prev, session } : prev));
+          return;
+        }
+
         const onboarded = await checkOnboarded(session.user.id);
         setAuth({ status: 'signed_in', session, onboarded });
       }
